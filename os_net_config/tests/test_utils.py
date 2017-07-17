@@ -21,6 +21,7 @@ import shutil
 import tempfile
 import yaml
 
+from os_net_config import objects
 from os_net_config.tests import base
 from os_net_config import utils
 
@@ -36,6 +37,33 @@ supports-test: yes
 supports-eeprom-access: yes
 supports-register-dump: yes
 supports-priv-flags: no
+'''
+
+_VPPCTL_OUTPUT = '''
+            Name               Idx       State          Counter          Count
+GigabitEthernet0/9/0              1        down
+local0                            0        down
+
+'''
+
+_INITIAL_VPP_CONFIG = '''
+unix {
+  nodaemon
+  log /tmp/vpp.log
+  full-coredump
+}
+
+
+api-trace {
+  on
+}
+
+api-segment {
+  gid vpp
+}
+
+dpdk {
+}
 '''
 
 
@@ -83,7 +111,7 @@ class TestUtils(base.TestCase):
                 out = _PCI_OUTPUT
                 return out, None
         self.stubs.Set(processutils, 'execute', test_execute)
-        pci = utils._get_pci_address('nic2', False)
+        pci = utils.get_pci_address('nic2', False)
         self.assertEqual('0000:00:19.0', pci)
 
     def test_get_pci_address_exception(self):
@@ -91,7 +119,7 @@ class TestUtils(base.TestCase):
             if 'ethtool' in name:
                 raise processutils.ProcessExecutionError
         self.stubs.Set(processutils, 'execute', test_execute)
-        pci = utils._get_pci_address('nic2', False)
+        pci = utils.get_pci_address('nic2', False)
         self.assertEqual(None, pci)
 
     def test_get_pci_address_error(self):
@@ -99,7 +127,7 @@ class TestUtils(base.TestCase):
             if 'ethtool' in name:
                 return None, 'Error'
         self.stubs.Set(processutils, 'execute', test_execute)
-        pci = utils._get_pci_address('nic2', False)
+        pci = utils.get_pci_address('nic2', False)
         self.assertEqual(None, pci)
 
     def test_bind_dpdk_interfaces(self):
