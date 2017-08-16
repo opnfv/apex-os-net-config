@@ -20,6 +20,7 @@ import os
 import re
 import yaml
 import json
+import time
 
 from oslo_concurrency import processutils
 
@@ -336,6 +337,7 @@ def restart_vpp(vpp_interfaces):
             processutils.execute('modprobe', 'vfio-pci')
     logger.info('Restarting VPP')
     processutils.execute('systemctl', 'restart', 'vpp')
+    time.sleep(10)
 
 
 def _get_vpp_interface_name(pci_addr):
