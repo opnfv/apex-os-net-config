@@ -337,10 +337,9 @@ def restart_vpp(vpp_interfaces):
             processutils.execute('modprobe', 'vfio-pci')
     logger.info('Restarting VPP')
     processutils.execute('systemctl', 'restart', 'vpp')
-    time.sleep(10)
 
 
-def _get_vpp_interface_name(pci_addr):
+def _get_vpp_interface_name(pci_addr, tries=1, timeout=5):
     """Get VPP interface name from a given PCI address
 
     From a running VPP instance, attempt to find the interface name from
@@ -351,34 +350,43 @@ def _get_vpp_interface_name(pci_addr):
                      - BB = Bus Number
                      - SS = Slot number
                      - F = Function
+    :param tries: Number of tries for getting vppctl output. Defaults to 1.
+    :param timeout: Timeout in seconds between tries. Defaults to 5.
     :return: VPP interface name. None if an interface is not found.
     """
     if not pci_addr:
         return None
 
-    try:
-        processutils.execute('systemctl', 'is-active', 'vpp')
-        out, err = processutils.execute('vppctl', 'show', 'interface')
-        m = re.search(r':([0-9a-fA-F]{2}):([0-9a-fA-F]{2}).([0-9a-fA-F])',
-                      pci_addr)
-        if m:
-            formatted_pci = "%x/%x/%x" % (int(m.group(1), 16),
-                                          int(m.group(2), 16),
-                                          int(m.group(3), 16))
-        else:
-            raise VppException('Invalid PCI address format: %s' % pci_addr)
+    for _ in range(tries):
+        try:
+            processutils.execute('systemctl', 'is-active', 'vpp')
+            out, err = processutils.execute('vppctl', 'show', 'interface')
+            logger.debug("vppctl show interface\n%s\n%s\n" % (out, err))
+            m = re.search(r':([0-9a-fA-F]{2}):([0-9a-fA-F]{2}).([0-9a-fA-F])',
+                          pci_addr)
+            if m:
+                formatted_pci = "%x/%x/%x" % (int(m.group(1), 16),
+                                              int(m.group(2), 16),
+                                              int(m.group(3), 16))
+            else:
+                raise VppException('Invalid PCI address format: %s' % pci_addr)
 
-        m = re.search(r'^(\w+%s)\s+' % formatted_pci, out, re.MULTILINE)
-        if m:
-            logger.debug('VPP interface found: %s' % m.group(1))
-            return m.group(1)
-        else:
-            logger.debug('Interface with pci address %s not bound to VPP'
-                         % pci_addr)
-            return None
-    except processutils.ProcessExecutionError:
-        logger.debug('Interface with pci address %s not bound to vpp' %
+            m = re.search(r'^(\w+%s)\s+' % formatted_pci, out, re.MULTILINE)
+            if m:
+                logger.debug('VPP interface found: %s' % m.group(1))
+                return m.group(1)
+            else:
+                logger.debug('Interface with pci address %s not bound to VPP'
+                             % pci_addr)
+                return None
+        except processutils.ProcessExecutionError:
+            pass
+
+        time.sleep(timeout)
+    else:
+        logger.info('Interface with pci address %s not bound to vpp' %
                      pci_addr)
+        return None
 
 
 def generate_vpp_config(vpp_config_path, vpp_interfaces):
@@ -487,7 +495,8 @@ def update_vpp_mapping(vpp_interfaces):
                                    ' found in mapping file' % vpp_int.name)
 
         for i in range(2):
-            vpp_name = _get_vpp_interface_name(vpp_int.pci_dev)
+            vpp_name = _get_vpp_interface_name(vpp_int.pci_dev,
+                                               tries=12, timeout=5)
             if not vpp_name:
                 restart_vpp(vpp_interfaces)
             else:
