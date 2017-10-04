@@ -18,10 +18,13 @@ import glob
 import logging
 import os
 import re
+import time
 import yaml
+import json
 
 from oslo_concurrency import processutils
 
+HIERADATA_FILE = '/etc/puppet/hieradata/common.json'
 
 logger = logging.getLogger(__name__)
 _SYS_CLASS_NET = '/sys/class/net'
@@ -57,6 +60,12 @@ def write_yaml_config(filepath, data):
     ensure_directory_presence(filepath)
     with open(filepath, 'w') as f:
         yaml.dump(data, f, default_flow_style=False)
+
+
+def write_json_config(filepath, data): 
+    ensure_directory_presence(filepath) 
+    with open(filepath, 'w') as f: 
+        json.dump(data, f, indent=2) 
 
 
 def ensure_directory_presence(filepath):
@@ -321,6 +330,23 @@ def _get_dpdk_mac_address(name):
             return item['mac_address']
 
 
+def write_hiera(filename, data): 
+    """Writes a dictionary as hiera variables to a file. 
+ 
+    If file already exists, the data will be appended to the file. 
+    :param filename:  file to write the hiera data to 
+    :param data: dictionary of key,value pairs to write as hiera variables 
+    :return: None 
+    """ 
+    if not isinstance(data, dict): 
+        raise TypeError('data type must be dictionary') 
+ 
+    current_content = get_file_data(filename) or "{}" 
+    current_data = json.loads(current_content) 
+    current_data.update(data) 
+    write_json_config(HIERADATA_FILE, current_data) 
+
+
 def restart_vpp(vpp_interfaces):
     for vpp_int in vpp_interfaces:
         if 'vfio-pci' in vpp_int.uio_driver:
@@ -329,49 +355,51 @@ def restart_vpp(vpp_interfaces):
     processutils.execute('systemctl', 'restart', 'vpp')
 
 
-def _get_vpp_interface_name(pci_addr):
+def _get_vpp_interface_name(pci_addr, tries=1, timeout=5):
     """Get VPP interface name from a given PCI address
 
     From a running VPP instance, attempt to find the interface name from
     a given PCI address of a NIC.
-
-    VppException will be raised if pci_addr is not formatted correctly.
-    ProcessExecutionError will be raised if VPP interface mapped to pci_addr
-    is not found.
 
     :param pci_addr: PCI address to lookup, in the form of DDDD:BB:SS.F, where
                      - DDDD = Domain
                      - BB = Bus Number
                      - SS = Slot number
                      - F = Function
+    :param tries: Number of tries for getting vppctl output. Defaults to 1.
+    :param timeout: Timeout in seconds between tries. Defaults to 5.
     :return: VPP interface name. None if an interface is not found.
     """
     if not pci_addr:
         return None
 
-    try:
-        processutils.execute('systemctl', 'is-active', 'vpp')
-        out, err = processutils.execute('vppctl', 'show', 'interfaces')
-        m = re.search(r':([0-9a-fA-F]{2}):([0-9a-fA-F]{2}).([0-9a-fA-F])',
-                      pci_addr)
-        if m:
-            formatted_pci = "%x/%x/%x" % (int(m.group(1), 16),
-                                          int(m.group(2), 16),
-                                          int(m.group(3), 16))
-        else:
-            raise VppException('Invalid PCI address format: %s' % pci_addr)
+    for _ in range(tries):
+        try:
+            timestamp = time.time()
+            processutils.execute('systemctl', 'is-active', 'vpp')
+            out, err = processutils.execute('vppctl', 'show', 'interface')
+            logger.debug("vppctl show interface\n%s\n%s\n" % (out, err))
+            m = re.search(r':([0-9a-fA-F]{2}):([0-9a-fA-F]{2}).([0-9a-fA-F])',
+                          pci_addr)
+            if m:
+                formatted_pci = "%x/%x/%x" % (int(m.group(1), 16),
+                                              int(m.group(2), 16),
+                                              int(m.group(3), 16))
+            else:
+                raise VppException('Invalid PCI address format: %s' % pci_addr)
 
-        m = re.search(r'^(\w+%s)\s+' % formatted_pci, out, re.MULTILINE)
-        if m:
-            logger.debug('VPP interface found: %s' % m.group(1))
-            return m.group(1)
-        else:
-            logger.debug('Interface with pci address %s not bound to VPP'
-                         % pci_addr)
-            return None
-    except processutils.ProcessExecutionError:
-        logger.debug('Interface with pci address %s not bound to vpp' %
-                     pci_addr)
+            m = re.search(r'^(\w+%s)\s+' % formatted_pci, out, re.MULTILINE)
+            if m:
+                logger.debug('VPP interface found: %s' % m.group(1))
+                return m.group(1)
+        except processutils.ProcessExecutionError:
+            pass
+
+        time.sleep(max(0, (timestamp + timeout) - time.time()))
+    else:
+        logger.info('Interface with pci address %s not bound to vpp' %
+                    pci_addr)
+        return None
 
 
 def generate_vpp_config(vpp_config_path, vpp_interfaces):
@@ -417,11 +445,12 @@ def generate_vpp_config(vpp_config_path, vpp_interfaces):
             # If such config line is found, we will replace the line with
             # appropriate configuration, otherwise, add a new config line
             # in 'dpdk' section of the config.
-            m = re.search(r'^\s*dev\s+%s\s*(\{[^}]*\})?\s*'
+            m = re.search(r'^\s*dev\s+%s\s*(\{[^}]*\})?\s*$'
                           % vpp_interface.pci_dev, data,
                           re.IGNORECASE | re.MULTILINE)
             if m:
-                data = re.sub(m.group(0), '  dev %s\n' % int_cfg, data)
+                data = re.sub(m.group(0), '  dev %s\n' % int_cfg, data,
+                              flags=re.MULTILINE)
             else:
                 data = re.sub(r'(^\s*dpdk\s*\{)',
                               r'\1\n  dev %s\n' % int_cfg,
@@ -434,13 +463,15 @@ def generate_vpp_config(vpp_config_path, vpp_interfaces):
                 # configuration, otherwise, add a new line in 'dpdk' section.
                 m = re.search(r'^\s*uio-driver.*$', data, re.MULTILINE)
                 if m:
-                    data = re.sub(m.group(0), r'  uio-driver %s'
-                                  % vpp_interface.uio_driver, data)
+                    data = re.sub(r'^\s*uio-driver.*$', '  uio-driver %s'
+                                  % vpp_interface.uio_driver, data,
+                                  flags=re.MULTILINE)
                 else:
-                    data = re.sub(r'(dpdk\s*\{)',
+                    data = re.sub(r'(^\s*dpdk\s*\{)',
                                   r'\1\n  uio-driver %s'
                                   % vpp_interface.uio_driver,
-                                  data)
+                                  data,
+                                  flags=re.MULTILINE)
         else:
             logger.debug('pci address not found for interface %s, may have'
                          'already been bound to vpp' % vpp_interface.name)
@@ -491,7 +522,8 @@ def update_vpp_mapping(vpp_interfaces):
         # only trying one more time, can turn into a retry_counter if needed
         # in the future.
         for i in range(2):
-            vpp_name = _get_vpp_interface_name(vpp_int.pci_dev)
+            vpp_name = _get_vpp_interface_name(vpp_int.pci_dev,
+                                               tries=12, timeout=5)
             if not vpp_name:
                 restart_vpp(vpp_interfaces)
             else:
@@ -513,6 +545,7 @@ def update_vpp_mapping(vpp_interfaces):
                        vpp_int.uio_driver))
         _update_dpdk_map(vpp_int.name, vpp_int.pci_dev, vpp_int.hwaddr,
                          vpp_int.uio_driver)
+        write_hiera(HIERADATA_FILE, {vpp_int.name: vpp_name})
         # Enable VPP service to make the VPP interface configuration
         # persistent.
         processutils.execute('systemctl', 'enable', 'vpp')
