@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "da33351e_5211c250",
+        "filename": "os_net_config/utils.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 364,
+      "author": {
+        "id": 3697
+      },
+      "writtenOn": "2017-10-05T13:58:20Z",
+      "side": 1,
+      "message": "This comment ties to the other one. We could move vppctl show interface before the whole for cycle and then just process the string here.",
+      "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
+      "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
+      "unresolved": false
+    },
+    {
+      "key": {
+        "uuid": "da33351e_32099e2c",
+        "filename": "os_net_config/utils.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 495,
+      "author": {
+        "id": 3697
+      },
+      "writtenOn": "2017-10-05T13:58:20Z",
+      "side": 1,
+      "message": "This check is done for each vpp interface separately - we execute vppctl show interface for each interface, which contains information about all interfaces.\n\nI suggest modifying it in such a way that we do vppctl show interface just once (e.g. moving that part before the whole for cycle) and then look for the appropriate strings in the output.",
+      "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
+      "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
+      "unresolved": false
+    }
+  ]
+}
