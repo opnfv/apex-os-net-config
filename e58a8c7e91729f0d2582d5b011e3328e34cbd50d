@@ -19,6 +19,24 @@
     },
     {
       "key": {
+        "uuid": "da33351e_f28bb61c",
+        "filename": "os_net_config/utils.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 364,
+      "author": {
+        "id": 3889
+      },
+      "writtenOn": "2017-10-05T15:56:09Z",
+      "side": 1,
+      "message": "We do want to run this command each time because it\u0027s entirely possible that the command itself fails and returns no output, in which case we would want to try again.",
+      "parentUuid": "da33351e_5211c250",
+      "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
+      "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
+      "unresolved": false
+    },
+    {
+      "key": {
         "uuid": "da33351e_32099e2c",
         "filename": "os_net_config/utils.py",
         "patchSetId": 2
@@ -30,6 +48,24 @@
       "writtenOn": "2017-10-05T13:58:20Z",
       "side": 1,
       "message": "This check is done for each vpp interface separately - we execute vppctl show interface for each interface, which contains information about all interfaces.\n\nI suggest modifying it in such a way that we do vppctl show interface just once (e.g. moving that part before the whole for cycle) and then look for the appropriate strings in the output.",
+      "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
+      "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
+      "unresolved": false
+    },
+    {
+      "key": {
+        "uuid": "da33351e_32b07edc",
+        "filename": "os_net_config/utils.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 495,
+      "author": {
+        "id": 3889
+      },
+      "writtenOn": "2017-10-05T15:56:09Z",
+      "side": 1,
+      "message": "In theory yes we can change the lookup to be one time for all interfaces, but that\u0027s a minor optimization.",
+      "parentUuid": "da33351e_32099e2c",
       "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
       "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
       "unresolved": false
