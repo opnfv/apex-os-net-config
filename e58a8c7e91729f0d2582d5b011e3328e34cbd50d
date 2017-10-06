@@ -37,6 +37,24 @@
     },
     {
       "key": {
+        "uuid": "da33351e_783dc5c3",
+        "filename": "os_net_config/utils.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 364,
+      "author": {
+        "id": 3697
+      },
+      "writtenOn": "2017-10-06T07:38:22Z",
+      "side": 1,
+      "message": "I meant move it outside of the for cycle where _get_vpp_interface_name is called (move it to line 482). Process vppctl show int there and then just work with the resulting string.\n\nAnother thing. We should use python api (https://wiki.fd.io/view/VPP/Python_API) instead of vppctl. We even install vpp-api-python, so it\u0027s ready to be used.",
+      "parentUuid": "da33351e_f28bb61c",
+      "revId": "e58a8c7e91729f0d2582d5b011e3328e34cbd50d",
+      "serverId": "bbac25d2-bf60-4904-9ba8-a72fc000d6c5",
+      "unresolved": false
+    },
+    {
+      "key": {
         "uuid": "da33351e_32099e2c",
         "filename": "os_net_config/utils.py",
         "patchSetId": 2
