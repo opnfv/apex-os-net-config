@@ -479,7 +479,7 @@ def update_vpp_mapping(vpp_interfaces):
 
     :param vpp_interfaces: List of VPP interface objects
     """
-    vpp_start_cli = ""
+    cli_list = []
 
     for vpp_int in vpp_interfaces:
         if not vpp_int.pci_dev:
@@ -505,10 +505,11 @@ def update_vpp_mapping(vpp_interfaces):
                                % (vpp_int.name, vpp_int.pci_dev))
 
         # Generate content of startup script for VPP
+        cli_list.append('set interface state %s up' % vpp_name)
         for address in vpp_int.addresses:
-            vpp_start_cli += 'set interface state %s up\n' % vpp_name
-            vpp_start_cli += 'set interface ip address %s %s/%s\n' \
-                             % (vpp_name, address.ip, address.prefixlen)
+            cli_list.append('set interface ip address %s %s/%s\n'
+                            % (vpp_name, address.ip,
+                               address.prefixlen))
 
         logger.info('Updating mapping for vpp interface %s:'
                     'pci_dev: %s mac address: %s uio driver: %s'
@@ -518,10 +519,16 @@ def update_vpp_mapping(vpp_interfaces):
                          vpp_int.uio_driver)
         write_hiera(HIERADATA_FILE, {vpp_int.name: vpp_name})
 
-        # Enable VPP service to make the VPP interface configuration
-        # persistent.
-        processutils.execute('systemctl', 'enable', 'vpp')
+    vpp_start_cli = get_file_data(_VPP_EXEC_FILE)
+    for cli_line in cli_list:
+        if not re.search(r'^\s*%s\s*$' % cli_line,
+                         vpp_start_cli, re.MULTILINE):
+            vpp_start_cli += cli_line + '\n'
 
     if diff(_VPP_EXEC_FILE, vpp_start_cli):
         write_config(_VPP_EXEC_FILE, vpp_start_cli)
         restart_vpp(vpp_interfaces)
+
+    # Enable VPP service to make the VPP interface configuration
+    # persistent.
+    processutils.execute('systemctl', 'enable', 'vpp')
